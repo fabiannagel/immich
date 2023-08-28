@@ -8,6 +8,7 @@ import {
   mapPerson,
   MergePersonDto,
   PeopleResponseDto,
+  PeopleUpdateDto,
   PersonResponseDto,
   PersonSearchDto,
   PersonUpdateDto,
@@ -25,11 +26,11 @@ export class PersonService {
   ) {}
 
   async getAll(authUser: AuthUserDto, dto: PersonSearchDto): Promise<PeopleResponseDto> {
-    const people = await this.repository.getAll(authUser.id, { minimumFaceCount: 1 });
-    const named = people.filter((person) => !!person.name);
-    const unnamed = people.filter((person) => !person.name);
-
-    const persons: PersonResponseDto[] = [...named, ...unnamed]
+    const people = await this.repository.getAll(authUser.id, {
+      minimumFaceCount: 1,
+      withHidden: dto.withHidden || false,
+    });
+    const persons: PersonResponseDto[] = people
       // with thumbnails
       .filter((person) => !!person.thumbnailPath)
       .map((person) => mapPerson(person));
@@ -62,11 +63,13 @@ export class PersonService {
   async update(authUser: AuthUserDto, id: string, dto: PersonUpdateDto): Promise<PersonResponseDto> {
     let person = await this.findOrFail(authUser, id);
 
-    if (dto.name != undefined || dto.isHidden !== undefined) {
-      person = await this.repository.update({ id, name: dto.name, isHidden: dto.isHidden });
-      const assets = await this.repository.getAssets(authUser.id, id);
-      const ids = assets.map((asset) => asset.id);
-      await this.jobRepository.queue({ name: JobName.SEARCH_INDEX_ASSET, data: { ids } });
+    if (dto.name !== undefined || dto.birthDate !== undefined || dto.isHidden !== undefined) {
+      person = await this.repository.update({ id, name: dto.name, birthDate: dto.birthDate, isHidden: dto.isHidden });
+      if (this.needsSearchIndexUpdate(dto)) {
+        const assets = await this.repository.getAssets(authUser.id, id);
+        const ids = assets.map((asset) => asset.id);
+        await this.jobRepository.queue({ name: JobName.SEARCH_INDEX_ASSET, data: { ids } });
+      }
     }
 
     if (dto.featureFaceAssetId) {
@@ -94,6 +97,25 @@ export class PersonService {
     }
 
     return mapPerson(person);
+  }
+
+  async updatePeople(authUser: AuthUserDto, dto: PeopleUpdateDto): Promise<BulkIdResponseDto[]> {
+    const results: BulkIdResponseDto[] = [];
+    for (const person of dto.people) {
+      try {
+        await this.update(authUser, person.id, {
+          isHidden: person.isHidden,
+          name: person.name,
+          birthDate: person.birthDate,
+          featureFaceAssetId: person.featureFaceAssetId,
+        }),
+          results.push({ id: person.id, success: true });
+      } catch (error: Error | any) {
+        this.logger.error(`Unable to update ${person.id} : ${error}`, error?.stack);
+        results.push({ id: person.id, success: false, error: BulkIdErrorReason.UNKNOWN });
+      }
+    }
+    return results;
   }
 
   async handlePersonCleanup() {
@@ -145,7 +167,19 @@ export class PersonService {
       }
     }
 
+    // Re-index all faces in typesense for up-to-date search results
+    await this.jobRepository.queue({ name: JobName.SEARCH_INDEX_FACES });
+
     return results;
+  }
+
+  /**
+   * Returns true if the given person update is going to require an update of the search index.
+   * @param dto the Person going to be updated
+   * @private
+   */
+  private needsSearchIndexUpdate(dto: PersonUpdateDto): boolean {
+    return dto.name !== undefined || dto.isHidden !== undefined;
   }
 
   private async findOrFail(authUser: AuthUserDto, id: string) {

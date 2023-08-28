@@ -5,7 +5,7 @@
   import PeopleCard from '$lib/components/faces-page/people-card.svelte';
   import FullScreenModal from '$lib/components/shared-components/full-screen-modal.svelte';
   import Button from '$lib/components/elements/buttons/button.svelte';
-  import { api, type PersonResponseDto } from '@api';
+  import { api, PeopleUpdateItem, type PersonResponseDto } from '@api';
   import { goto } from '$app/navigation';
   import { AppRoute } from '$lib/constants';
   import { handleError } from '$lib/utils/handle-error';
@@ -17,41 +17,96 @@
   import IconButton from '$lib/components/elements/buttons/icon-button.svelte';
   import EyeOutline from 'svelte-material-icons/EyeOutline.svelte';
   import ImageThumbnail from '$lib/components/assets/thumbnail/image-thumbnail.svelte';
+  import { onDestroy, onMount } from 'svelte';
+  import { browser } from '$app/environment';
+  import MergeSuggestionModal from '$lib/components/faces-page/merge-suggestion-modal.svelte';
+  import SetBirthDateModal from '$lib/components/faces-page/set-birth-date-modal.svelte';
 
   export let data: PageData;
   let selectHidden = false;
-  let changeCounter = 0;
   let initialHiddenValues: Record<string, boolean> = {};
+
+  let eyeColorMap: Record<string, string> = {};
 
   let people = data.people.people;
   let countTotalPeople = data.people.total;
   let countVisiblePeople = data.people.visible;
 
+  let showLoadingSpinner = false;
+  let toggleVisibility = false;
+
+  let showChangeNameModal = false;
+  let showSetBirthDateModal = false;
+  let showMergeModal = false;
+  let personName = '';
+  let personMerge1: PersonResponseDto;
+  let personMerge2: PersonResponseDto;
+  let edittingPerson: PersonResponseDto | null = null;
+
   people.forEach((person: PersonResponseDto) => {
     initialHiddenValues[person.id] = person.isHidden;
   });
 
+  const onKeyboardPress = (event: KeyboardEvent) => handleKeyboardPress(event);
+
+  onMount(() => {
+    document.addEventListener('keydown', onKeyboardPress);
+  });
+
+  onDestroy(() => {
+    if (browser) {
+      document.removeEventListener('keydown', onKeyboardPress);
+    }
+  });
+
+  const handleKeyboardPress = (event: KeyboardEvent) => {
+    switch (event.key) {
+      case 'Escape':
+        handleCloseClick();
+        return;
+    }
+  };
+
   const handleCloseClick = () => {
-    selectHidden = false;
-    people.forEach((person: PersonResponseDto) => {
+    for (const person of people) {
       person.isHidden = initialHiddenValues[person.id];
-    });
+    }
+    // trigger reactivity
+    people = people;
+
+    // Reset variables used on the "Show & hide faces"   modal
+    showLoadingSpinner = false;
+    selectHidden = false;
+    toggleVisibility = false;
+  };
+
+  const handleResetVisibility = () => {
+    for (const person of people) {
+      person.isHidden = initialHiddenValues[person.id];
+    }
+
+    // trigger reactivity
+    people = people;
+  };
+
+  const handleToggleVisibility = () => {
+    toggleVisibility = !toggleVisibility;
+    for (const person of people) {
+      person.isHidden = toggleVisibility;
+    }
+
+    // trigger reactivity
+    people = people;
   };
 
   const handleDoneClick = async () => {
-    selectHidden = false;
+    showLoadingSpinner = true;
+    let changed: PeopleUpdateItem[] = [];
     try {
-      // Reset the counter before checking changes
-      let changeCounter = 0;
-
       // Check if the visibility for each person has been changed
       for (const person of people) {
         if (person.isHidden !== initialHiddenValues[person.id]) {
-          changeCounter++;
-          await api.personApi.updatePerson({
-            id: person.id,
-            personUpdateDto: { isHidden: person.isHidden },
-          });
+          changed.push({ id: person.id, isHidden: person.isHidden });
 
           // Update the initial hidden values
           initialHiddenValues[person.id] = person.isHidden;
@@ -61,61 +116,225 @@
         }
       }
 
-      if (changeCounter > 0) {
+      if (changed.length > 0) {
+        const { data: results } = await api.personApi.updatePeople({
+          peopleUpdateDto: { people: changed },
+        });
+        const count = results.filter(({ success }) => success).length;
+        if (results.length - count > 0) {
+          notificationController.show({
+            type: NotificationType.Error,
+            message: `Unable to change the visibility for ${results.length - count} ${
+              results.length - count <= 1 ? 'person' : 'people'
+            }`,
+          });
+        }
         notificationController.show({
           type: NotificationType.Info,
-          message: `Visibility changed for ${changeCounter} ${changeCounter <= 1 ? 'person' : 'people'}`,
+          message: `Visibility changed for ${count} ${count <= 1 ? 'person' : 'people'}`,
         });
       }
     } catch (error) {
       handleError(
         error,
-        `Unable to change the visibility for ${changeCounter} ${changeCounter <= 1 ? 'person' : 'people'}`,
+        `Unable to change the visibility for ${changed.length} ${changed.length <= 1 ? 'person' : 'people'}`,
       );
     }
+    // Reset variables used on the "Show & hide faces" modal
+    showLoadingSpinner = false;
+    selectHidden = false;
+    toggleVisibility = false;
   };
 
-  let showChangeNameModal = false;
-  let personName = '';
-  let edittingPerson: PersonResponseDto | null = null;
+  const handleMergeSameFace = async (response: [PersonResponseDto, PersonResponseDto]) => {
+    const [personToMerge, personToBeMergedIn] = response;
+    showMergeModal = false;
 
-  const handleChangeName = ({ detail }: CustomEvent<PersonResponseDto>) => {
-    showChangeNameModal = true;
-    personName = detail.name;
-    edittingPerson = detail;
-  };
-
-  const handleMergeFaces = (event: CustomEvent<PersonResponseDto>) => {
-    goto(`${AppRoute.PEOPLE}/${event.detail.id}?action=merge`);
-  };
-
-  const submitNameChange = async () => {
+    if (!edittingPerson) {
+      return;
+    }
     try {
-      if (edittingPerson) {
-        const { data: updatedPerson } = await api.personApi.updatePerson({
-          id: edittingPerson.id,
-          personUpdateDto: { name: personName },
-        });
+      await api.personApi.mergePerson({
+        id: personMerge2.id,
+        mergePersonDto: { ids: [personToMerge.id] },
+      });
+      countVisiblePeople--;
+      people = people.filter((person: PersonResponseDto) => person.id !== personToMerge.id);
 
-        people = people.map((person: PersonResponseDto) => {
-          if (person.id === updatedPerson.id) {
-            return updatedPerson;
+      notificationController.show({
+        message: 'Merge faces succesfully',
+        type: NotificationType.Info,
+      });
+    } catch (error) {
+      handleError(error, 'Unable to save name');
+    }
+    if (personToBeMergedIn.name !== personName && edittingPerson.id === personToBeMergedIn.id) {
+      /*
+       *
+       * If the user merges one of the suggested people into the person he's editing it, it's merging the suggested person AND renames
+       * the person he's editing
+       *
+       */
+      try {
+        await api.personApi.updatePerson({ id: personToBeMergedIn.id, personUpdateDto: { name: personName } });
+        for (const person of people) {
+          if (person.id === personToBeMergedIn.id) {
+            person.name = personName;
+            break;
           }
-          return person;
-        });
-
-        showChangeNameModal = false;
-
+        }
         notificationController.show({
           message: 'Change name succesfully',
           type: NotificationType.Info,
         });
+
+        // trigger reactivity
+        people = people;
+      } catch (error) {
+        handleError(error, 'Unable to save name');
       }
+    }
+  };
+
+  const handleChangeName = (detail: PersonResponseDto) => {
+    showChangeNameModal = true;
+    personName = detail.name;
+    personMerge1 = detail;
+    edittingPerson = detail;
+  };
+
+  const handleSetBirthDate = (detail: PersonResponseDto) => {
+    showSetBirthDateModal = true;
+    edittingPerson = detail;
+  };
+
+  const handleHideFace = async (detail: PersonResponseDto) => {
+    try {
+      const { data: updatedPerson } = await api.personApi.updatePerson({
+        id: detail.id,
+        personUpdateDto: { isHidden: true },
+      });
+
+      people = people.map((person: PersonResponseDto) => {
+        if (person.id === updatedPerson.id) {
+          return updatedPerson;
+        }
+        return person;
+      });
+
+      people.forEach((person: PersonResponseDto) => {
+        initialHiddenValues[person.id] = person.isHidden;
+      });
+
+      countVisiblePeople--;
+
+      showChangeNameModal = false;
+
+      notificationController.show({
+        message: 'Changed visibility succesfully',
+        type: NotificationType.Info,
+      });
+    } catch (error) {
+      handleError(error, 'Unable to hide person');
+    }
+  };
+
+  const handleMergeFaces = (detail: PersonResponseDto) => {
+    goto(`${AppRoute.PEOPLE}/${detail.id}?action=merge`);
+  };
+
+  const submitNameChange = async () => {
+    showChangeNameModal = false;
+    if (!edittingPerson || personName === edittingPerson.name) {
+      return;
+    }
+    // We check if another person has the same name as the name entered by the user
+
+    const existingPerson = people.find(
+      (person: PersonResponseDto) =>
+        person.name.toLowerCase() === personName.toLowerCase() &&
+        edittingPerson &&
+        person.id !== edittingPerson.id &&
+        person.name,
+    );
+    if (existingPerson) {
+      personMerge2 = existingPerson;
+      showMergeModal = true;
+      return;
+    }
+    changeName();
+  };
+
+  const submitBirthDateChange = async (value: string) => {
+    showSetBirthDateModal = false;
+    if (!edittingPerson || value === edittingPerson.birthDate) {
+      return;
+    }
+
+    try {
+      const { data: updatedPerson } = await api.personApi.updatePerson({
+        id: edittingPerson.id,
+        personUpdateDto: { birthDate: value.length > 0 ? value : null },
+      });
+
+      people = people.map((person: PersonResponseDto) => {
+        if (person.id === updatedPerson.id) {
+          return updatedPerson;
+        }
+        return person;
+      });
+
+      notificationController.show({
+        message: 'Date of birth saved succesfully',
+        type: NotificationType.Info,
+      });
+    } catch (error) {
+      handleError(error, 'Unable to save name');
+    }
+  };
+
+  const changeName = async () => {
+    showMergeModal = false;
+    showChangeNameModal = false;
+
+    if (!edittingPerson) {
+      return;
+    }
+    try {
+      const { data: updatedPerson } = await api.personApi.updatePerson({
+        id: edittingPerson.id,
+        personUpdateDto: { name: personName },
+      });
+
+      people = people.map((person: PersonResponseDto) => {
+        if (person.id === updatedPerson.id) {
+          return updatedPerson;
+        }
+        return person;
+      });
+
+      notificationController.show({
+        message: 'Change name succesfully',
+        type: NotificationType.Info,
+      });
     } catch (error) {
       handleError(error, 'Unable to save name');
     }
   };
 </script>
+
+{#if showMergeModal}
+  <FullScreenModal on:clickOutside={() => (showMergeModal = false)}>
+    <MergeSuggestionModal
+      {personMerge1}
+      {personMerge2}
+      {people}
+      on:close={() => (showMergeModal = false)}
+      on:reject={() => changeName()}
+      on:confirm={(event) => handleMergeSameFace(event.detail)}
+    />
+  </FullScreenModal>
+{/if}
 
 <UserPageLayout user={data.user} title="People">
   <svelte:fragment slot="buttons">
@@ -132,13 +351,17 @@
   {#if countVisiblePeople > 0}
     <div class="pl-4">
       <div class="flex flex-row flex-wrap gap-1">
-        {#key selectHidden}
-          {#each people as person (person.id)}
-            {#if !person.isHidden}
-              <PeopleCard {person} on:change-name={handleChangeName} on:merge-faces={handleMergeFaces} />
-            {/if}
-          {/each}
-        {/key}
+        {#each people as person (person.id)}
+          {#if !person.isHidden}
+            <PeopleCard
+              {person}
+              on:change-name={() => handleChangeName(person)}
+              on:set-birth-date={() => handleSetBirthDate(person)}
+              on:merge-faces={() => handleMergeFaces(person)}
+              on:hide-face={() => handleHideFace(person)}
+            />
+          {/if}
+        {/each}
       </div>
     </div>
   {:else}
@@ -163,7 +386,7 @@
 
         <form on:submit|preventDefault={submitNameChange} autocomplete="off">
           <div class="m-4 flex flex-col gap-2">
-            <label class="immich-form-label" for="email">Name</label>
+            <label class="immich-form-label" for="name">Name</label>
             <!-- svelte-ignore a11y-autofocus -->
             <input class="immich-form-input" id="name" name="name" type="text" bind:value={personName} autofocus />
           </div>
@@ -182,34 +405,45 @@
       </div>
     </FullScreenModal>
   {/if}
+
+  {#if showSetBirthDateModal}
+    <SetBirthDateModal
+      birthDate={edittingPerson?.birthDate ?? ''}
+      on:close={() => (showSetBirthDateModal = false)}
+      on:updated={(event) => submitBirthDateChange(event.detail)}
+    />
+  {/if}
 </UserPageLayout>
 {#if selectHidden}
-  <ShowHide on:doneClick={handleDoneClick} on:closeClick={handleCloseClick}>
-    <div class="pl-4">
-      <div class="flex flex-row flex-wrap gap-1">
-        {#each people as person (person.id)}
-          <div class="relative">
-            <div class="h-48 w-48 rounded-xl brightness-95 filter">
-              <button class="h-full w-full" on:click={() => (person.isHidden = !person.isHidden)}>
-                <ImageThumbnail
-                  bind:hidden={person.isHidden}
-                  shadow
-                  url={api.getPeopleThumbnailUrl(person.id)}
-                  altText={person.name}
-                  widthStyle="100%"
-                />
-              </button>
-            </div>
-            {#if person.name}
-              <span
-                class="w-100 absolute bottom-2 w-full text-ellipsis px-1 text-center font-medium text-white backdrop-blur-[1px] hover:cursor-pointer"
-              >
-                {person.name}
-              </span>
-            {/if}
-          </div>
-        {/each}
-      </div>
-    </div>
+  <ShowHide
+    on:doneClick={handleDoneClick}
+    on:closeClick={handleCloseClick}
+    on:reset-visibility={handleResetVisibility}
+    on:toggle-visibility={handleToggleVisibility}
+    bind:showLoadingSpinner
+    bind:toggleVisibility
+  >
+    {#each people as person (person.id)}
+      <button
+        class="relative h-36 w-36 md:h-48 md:w-48"
+        on:click={() => (person.isHidden = !person.isHidden)}
+        on:mouseenter={() => (eyeColorMap[person.id] = 'black')}
+        on:mouseleave={() => (eyeColorMap[person.id] = 'white')}
+      >
+        <ImageThumbnail
+          bind:hidden={person.isHidden}
+          shadow
+          url={api.getPeopleThumbnailUrl(person.id)}
+          altText={person.name}
+          widthStyle="100%"
+          bind:eyeColor={eyeColorMap[person.id]}
+        />
+        {#if person.name}
+          <span class="absolute bottom-2 left-0 w-full select-text px-1 text-center font-medium text-white">
+            {person.name}
+          </span>
+        {/if}
+      </button>
+    {/each}
   </ShowHide>
 {/if}

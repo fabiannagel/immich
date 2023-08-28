@@ -11,6 +11,7 @@ export interface AssetStatsOptions {
 export interface AssetSearchOptions {
   isVisible?: boolean;
   type?: AssetType;
+  order?: 'ASC' | 'DESC';
 }
 
 export interface LivePhotoSearchOptions {
@@ -46,6 +47,25 @@ export enum WithProperty {
   SIDECAR = 'sidecar',
 }
 
+export enum TimeBucketSize {
+  DAY = 'DAY',
+  MONTH = 'MONTH',
+}
+
+export interface TimeBucketOptions {
+  size: TimeBucketSize;
+  isArchived?: boolean;
+  isFavorite?: boolean;
+  albumId?: string;
+  personId?: string;
+  userId?: string;
+}
+
+export interface TimeBucketItem {
+  timeBucket: string;
+  count: number;
+}
+
 export const IAssetRepository = 'IAssetRepository';
 
 export interface IAssetRepository {
@@ -59,8 +79,11 @@ export interface IAssetRepository {
   getLastUpdatedAssetForAlbumId(albumId: string): Promise<AssetEntity | null>;
   deleteAll(ownerId: string): Promise<void>;
   getAll(pagination: PaginationOptions, options?: AssetSearchOptions): Paginated<AssetEntity>;
+  updateAll(ids: string[], options: Partial<AssetEntity>): Promise<void>;
   save(asset: Partial<AssetEntity>): Promise<AssetEntity>;
   findLivePhotoMatch(options: LivePhotoSearchOptions): Promise<AssetEntity | null>;
   getMapMarkers(ownerId: string, options?: MapMarkerSearchOptions): Promise<MapMarker[]>;
   getStatistics(ownerId: string, options: AssetStatsOptions): Promise<AssetStats>;
+  getTimeBuckets(options: TimeBucketOptions): Promise<TimeBucketItem[]>;
+  getByTimeBucket(timeBucket: string, options: TimeBucketOptions): Promise<AssetEntity[]>;
 }

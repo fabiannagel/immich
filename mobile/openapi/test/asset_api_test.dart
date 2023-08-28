@@ -55,7 +55,7 @@ void main() {
 
     // Get all AssetEntity belong to the user
     //
-    //Future<List<AssetResponseDto>> getAllAssets({ String userId, bool isFavorite, bool isArchived, bool withoutThumbs, num skip, String ifNoneMatch }) async
+    //Future<List<AssetResponseDto>> getAllAssets({ String userId, bool isFavorite, bool isArchived, num skip, DateTime updatedAfter, String ifNoneMatch }) async
     test('test getAllAssets', () async {
       // TODO
     });
@@ -64,16 +64,6 @@ void main() {
     //
     //Future<AssetResponseDto> getAssetById(String id, { String key }) async
     test('test getAssetById', () async {
-      // TODO
-    });
-
-    //Future<List<AssetResponseDto>> getAssetByTimeBucket(GetAssetByTimeBucketDto getAssetByTimeBucketDto) async
-    test('test getAssetByTimeBucket', () async {
-      // TODO
-    });
-
-    //Future<AssetCountByTimeBucketResponseDto> getAssetCountByTimeBucket(GetAssetCountByTimeBucketDto getAssetCountByTimeBucketDto) async
-    test('test getAssetCountByTimeBucket', () async {
       // TODO
     });
 
@@ -92,6 +82,11 @@ void main() {
       // TODO
     });
 
+    //Future<List<AssetResponseDto>> getByTimeBucket(TimeBucketSize size, String timeBucket, { String userId, String albumId, String personId, bool isArchived, bool isFavorite, String key }) async
+    test('test getByTimeBucket', () async {
+      // TODO
+    });
+
     //Future<List<CuratedLocationsResponseDto>> getCuratedLocations() async
     test('test getCuratedLocations', () async {
       // TODO
@@ -102,7 +97,7 @@ void main() {
       // TODO
     });
 
-    //Future<DownloadResponseDto> getDownloadInfo({ List<String> assetIds, String albumId, String userId, num archiveSize, String key }) async
+    //Future<DownloadResponseDto> getDownloadInfo(DownloadInfoDto downloadInfoDto, { String key }) async
     test('test getDownloadInfo', () async {
       // TODO
     });
@@ -117,6 +112,11 @@ void main() {
       // TODO
     });
 
+    //Future<List<TimeBucketResponseDto>> getTimeBuckets(TimeBucketSize size, { String userId, String albumId, String personId, bool isArchived, bool isFavorite, String key }) async
+    test('test getTimeBuckets', () async {
+      // TODO
+    });
+
     // Get all asset of a device that are in the database, ID only.
     //
     //Future<List<String>> getUserAssetsByDeviceId(String deviceId) async
@@ -126,6 +126,11 @@ void main() {
 
     //Future<AssetFileUploadResponseDto> importFile(ImportAssetDto importAssetDto) async
     test('test importFile', () async {
+      // TODO
+    });
+
+    //Future runAssetJobs(AssetJobsDto assetJobsDto) async
+    test('test runAssetJobs', () async {
       // TODO
     });
 
@@ -146,7 +151,12 @@ void main() {
       // TODO
     });
 
-    //Future<AssetFileUploadResponseDto> uploadFile(MultipartFile assetData, String deviceAssetId, String deviceId, DateTime fileCreatedAt, DateTime fileModifiedAt, bool isFavorite, { String key, MultipartFile livePhotoData, MultipartFile sidecarData, bool isReadOnly, bool isArchived, bool isVisible, String duration }) async
+    //Future updateAssets(AssetBulkUpdateDto assetBulkUpdateDto) async
+    test('test updateAssets', () async {
+      // TODO
+    });
+
+    //Future<AssetFileUploadResponseDto> uploadFile(MultipartFile assetData, String deviceAssetId, String deviceId, DateTime fileCreatedAt, DateTime fileModifiedAt, bool isFavorite, { String key, String duration, bool isArchived, bool isReadOnly, bool isVisible, MultipartFile livePhotoData, MultipartFile sidecarData }) async
     test('test uploadFile', () async {
       // TODO
     });

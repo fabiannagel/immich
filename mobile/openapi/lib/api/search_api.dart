@@ -60,47 +60,6 @@ class SearchApi {
     return null;
   }
 
-  /// Performs an HTTP 'GET /search/config' operation and returns the [Response].
-  Future<Response> getSearchConfigWithHttpInfo() async {
-    // ignore: prefer_const_declarations
-    final path = r'/search/config';
-
-    // ignore: prefer_final_locals
-    Object? postBody;
-
-    final queryParams = <QueryParam>[];
-    final headerParams = <String, String>{};
-    final formParams = <String, String>{};
-
-    const contentTypes = <String>[];
-
-
-    return apiClient.invokeAPI(
-      path,
-      'GET',
-      queryParams,
-      postBody,
-      headerParams,
-      formParams,
-      contentTypes.isEmpty ? null : contentTypes.first,
-    );
-  }
-
-  Future<SearchConfigResponseDto?> getSearchConfig() async {
-    final response = await getSearchConfigWithHttpInfo();
-    if (response.statusCode >= HttpStatus.badRequest) {
-      throw ApiException(response.statusCode, await _decodeBodyBytes(response));
-    }
-    // When a remote server returns no body with a status of 204, we shall not decode it.
-    // At the time of writing this, `dart:convert` will throw an "Unexpected end of input"
-    // FormatException when trying to decode an empty string.
-    if (response.body.isNotEmpty && response.statusCode != HttpStatus.noContent) {
-      return await apiClient.deserializeAsync(await _decodeBodyBytes(response), 'SearchConfigResponseDto',) as SearchConfigResponseDto;
-    
-    }
-    return null;
-  }
-
   /// Performs an HTTP 'GET /search' operation and returns the [Response].
   /// Parameters:
   ///
@@ -126,6 +85,8 @@ class SearchApi {
   ///
   /// * [String] exifInfoPeriodModel:
   ///
+  /// * [String] exifInfoPeriodProjectionType:
+  ///
   /// * [List<String>] smartInfoPeriodObjects:
   ///
   /// * [List<String>] smartInfoPeriodTags:
@@ -133,7 +94,7 @@ class SearchApi {
   /// * [bool] recent:
   ///
   /// * [bool] motion:
-  Future<Response> searchWithHttpInfo({ String? q, String? query, bool? clip, String? type, bool? isFavorite, bool? isArchived, String? exifInfoPeriodCity, String? exifInfoPeriodState, String? exifInfoPeriodCountry, String? exifInfoPeriodMake, String? exifInfoPeriodModel, List<String>? smartInfoPeriodObjects, List<String>? smartInfoPeriodTags, bool? recent, bool? motion, }) async {
+  Future<Response> searchWithHttpInfo({ String? q, String? query, bool? clip, String? type, bool? isFavorite, bool? isArchived, String? exifInfoPeriodCity, String? exifInfoPeriodState, String? exifInfoPeriodCountry, String? exifInfoPeriodMake, String? exifInfoPeriodModel, String? exifInfoPeriodProjectionType, List<String>? smartInfoPeriodObjects, List<String>? smartInfoPeriodTags, bool? recent, bool? motion, }) async {
     // ignore: prefer_const_declarations
     final path = r'/search';
 
@@ -176,6 +137,9 @@ class SearchApi {
     }
     if (exifInfoPeriodModel != null) {
       queryParams.addAll(_queryParams('', 'exifInfo.model', exifInfoPeriodModel));
+    }
+    if (exifInfoPeriodProjectionType != null) {
+      queryParams.addAll(_queryParams('', 'exifInfo.projectionType', exifInfoPeriodProjectionType));
     }
     if (smartInfoPeriodObjects != null) {
       queryParams.addAll(_queryParams('multi', 'smartInfo.objects', smartInfoPeriodObjects));
@@ -228,6 +192,8 @@ class SearchApi {
   ///
   /// * [String] exifInfoPeriodModel:
   ///
+  /// * [String] exifInfoPeriodProjectionType:
+  ///
   /// * [List<String>] smartInfoPeriodObjects:
   ///
   /// * [List<String>] smartInfoPeriodTags:
@@ -235,8 +201,8 @@ class SearchApi {
   /// * [bool] recent:
   ///
   /// * [bool] motion:
-  Future<SearchResponseDto?> search({ String? q, String? query, bool? clip, String? type, bool? isFavorite, bool? isArchived, String? exifInfoPeriodCity, String? exifInfoPeriodState, String? exifInfoPeriodCountry, String? exifInfoPeriodMake, String? exifInfoPeriodModel, List<String>? smartInfoPeriodObjects, List<String>? smartInfoPeriodTags, bool? recent, bool? motion, }) async {
-    final response = await searchWithHttpInfo( q: q, query: query, clip: clip, type: type, isFavorite: isFavorite, isArchived: isArchived, exifInfoPeriodCity: exifInfoPeriodCity, exifInfoPeriodState: exifInfoPeriodState, exifInfoPeriodCountry: exifInfoPeriodCountry, exifInfoPeriodMake: exifInfoPeriodMake, exifInfoPeriodModel: exifInfoPeriodModel, smartInfoPeriodObjects: smartInfoPeriodObjects, smartInfoPeriodTags: smartInfoPeriodTags, recent: recent, motion: motion, );
+  Future<SearchResponseDto?> search({ String? q, String? query, bool? clip, String? type, bool? isFavorite, bool? isArchived, String? exifInfoPeriodCity, String? exifInfoPeriodState, String? exifInfoPeriodCountry, String? exifInfoPeriodMake, String? exifInfoPeriodModel, String? exifInfoPeriodProjectionType, List<String>? smartInfoPeriodObjects, List<String>? smartInfoPeriodTags, bool? recent, bool? motion, }) async {
+    final response = await searchWithHttpInfo( q: q, query: query, clip: clip, type: type, isFavorite: isFavorite, isArchived: isArchived, exifInfoPeriodCity: exifInfoPeriodCity, exifInfoPeriodState: exifInfoPeriodState, exifInfoPeriodCountry: exifInfoPeriodCountry, exifInfoPeriodMake: exifInfoPeriodMake, exifInfoPeriodModel: exifInfoPeriodModel, exifInfoPeriodProjectionType: exifInfoPeriodProjectionType, smartInfoPeriodObjects: smartInfoPeriodObjects, smartInfoPeriodTags: smartInfoPeriodTags, recent: recent, motion: motion, );
     if (response.statusCode >= HttpStatus.badRequest) {
       throw ApiException(response.statusCode, await _decodeBodyBytes(response));
     }

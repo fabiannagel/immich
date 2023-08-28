@@ -1,6 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import {
-  assetEntityStub,
+  assetStub,
   authStub,
   faceStub,
   newJobRepositoryMock,
@@ -18,6 +18,7 @@ import { PersonService } from './person.service';
 const responseDto: PersonResponseDto = {
   id: 'person-1',
   name: 'Person 1',
+  birthDate: null,
   thumbnailPath: '/path/to/thumbnail.jpg',
   isHidden: false,
 };
@@ -47,7 +48,7 @@ describe(PersonService.name, () => {
         visible: 1,
         people: [responseDto],
       });
-      expect(personMock.getAll).toHaveBeenCalledWith(authStub.admin.id, { minimumFaceCount: 1 });
+      expect(personMock.getAll).toHaveBeenCalledWith(authStub.admin.id, { minimumFaceCount: 1, withHidden: false });
     });
     it('should get all visible people with thumbnails', async () => {
       personMock.getAll.mockResolvedValue([personStub.withName, personStub.hidden]);
@@ -56,7 +57,7 @@ describe(PersonService.name, () => {
         visible: 1,
         people: [responseDto],
       });
-      expect(personMock.getAll).toHaveBeenCalledWith(authStub.admin.id, { minimumFaceCount: 1 });
+      expect(personMock.getAll).toHaveBeenCalledWith(authStub.admin.id, { minimumFaceCount: 1, withHidden: false });
     });
     it('should get all hidden and visible people with thumbnails', async () => {
       personMock.getAll.mockResolvedValue([personStub.withName, personStub.hidden]);
@@ -68,12 +69,13 @@ describe(PersonService.name, () => {
           {
             id: 'person-1',
             name: '',
+            birthDate: null,
             thumbnailPath: '/path/to/thumbnail.jpg',
             isHidden: true,
           },
         ],
       });
-      expect(personMock.getAll).toHaveBeenCalledWith(authStub.admin.id, { minimumFaceCount: 1 });
+      expect(personMock.getAll).toHaveBeenCalledWith(authStub.admin.id, { minimumFaceCount: 1, withHidden: true });
     });
   });
 
@@ -112,7 +114,7 @@ describe(PersonService.name, () => {
 
   describe('getAssets', () => {
     it("should return a person's assets", async () => {
-      personMock.getAssets.mockResolvedValue([assetEntityStub.image, assetEntityStub.video]);
+      personMock.getAssets.mockResolvedValue([assetStub.image, assetStub.video]);
       await sut.getAssets(authStub.admin, 'person-1');
       expect(personMock.getAssets).toHaveBeenCalledWith('admin_id', 'person-1');
     });
@@ -130,7 +132,7 @@ describe(PersonService.name, () => {
     it("should update a person's name", async () => {
       personMock.getById.mockResolvedValue(personStub.noName);
       personMock.update.mockResolvedValue(personStub.withName);
-      personMock.getAssets.mockResolvedValue([assetEntityStub.image]);
+      personMock.getAssets.mockResolvedValue([assetStub.image]);
 
       await expect(sut.update(authStub.admin, 'person-1', { name: 'Person 1' })).resolves.toEqual(responseDto);
 
@@ -138,14 +140,32 @@ describe(PersonService.name, () => {
       expect(personMock.update).toHaveBeenCalledWith({ id: 'person-1', name: 'Person 1' });
       expect(jobMock.queue).toHaveBeenCalledWith({
         name: JobName.SEARCH_INDEX_ASSET,
-        data: { ids: [assetEntityStub.image.id] },
+        data: { ids: [assetStub.image.id] },
       });
+    });
+
+    it("should update a person's date of birth", async () => {
+      personMock.getById.mockResolvedValue(personStub.noBirthDate);
+      personMock.update.mockResolvedValue(personStub.withBirthDate);
+      personMock.getAssets.mockResolvedValue([assetStub.image]);
+
+      await expect(sut.update(authStub.admin, 'person-1', { birthDate: new Date('1976-06-30') })).resolves.toEqual({
+        id: 'person-1',
+        name: 'Person 1',
+        birthDate: new Date('1976-06-30'),
+        thumbnailPath: '/path/to/thumbnail.jpg',
+        isHidden: false,
+      });
+
+      expect(personMock.getById).toHaveBeenCalledWith('admin_id', 'person-1');
+      expect(personMock.update).toHaveBeenCalledWith({ id: 'person-1', birthDate: new Date('1976-06-30') });
+      expect(jobMock.queue).not.toHaveBeenCalled();
     });
 
     it('should update a person visibility', async () => {
       personMock.getById.mockResolvedValue(personStub.hidden);
       personMock.update.mockResolvedValue(personStub.withName);
-      personMock.getAssets.mockResolvedValue([assetEntityStub.image]);
+      personMock.getAssets.mockResolvedValue([assetStub.image]);
 
       await expect(sut.update(authStub.admin, 'person-1', { isHidden: false })).resolves.toEqual(responseDto);
 
@@ -153,7 +173,7 @@ describe(PersonService.name, () => {
       expect(personMock.update).toHaveBeenCalledWith({ id: 'person-1', isHidden: false });
       expect(jobMock.queue).toHaveBeenCalledWith({
         name: JobName.SEARCH_INDEX_ASSET,
-        data: { ids: [assetEntityStub.image.id] },
+        data: { ids: [assetStub.image.id] },
       });
     });
 
@@ -185,6 +205,16 @@ describe(PersonService.name, () => {
           imageWidth: faceStub.face1.imageWidth,
         },
       });
+    });
+  });
+
+  describe('updateAll', () => {
+    it('should throw an error when personId is invalid', async () => {
+      personMock.getById.mockResolvedValue(null);
+      await expect(
+        sut.updatePeople(authStub.admin, { people: [{ id: 'person-1', name: 'Person 1' }] }),
+      ).resolves.toEqual([{ error: BulkIdErrorReason.UNKNOWN, id: 'person-1', success: false }]);
+      expect(personMock.update).not.toHaveBeenCalled();
     });
   });
 
@@ -229,7 +259,7 @@ describe(PersonService.name, () => {
     it('should delete conflicting faces before merging', async () => {
       personMock.getById.mockResolvedValue(personStub.primaryPerson);
       personMock.getById.mockResolvedValue(personStub.mergePerson);
-      personMock.prepareReassignFaces.mockResolvedValue([assetEntityStub.image.id]);
+      personMock.prepareReassignFaces.mockResolvedValue([assetStub.image.id]);
 
       await expect(sut.mergePerson(authStub.admin, 'person-1', { ids: ['person-2'] })).resolves.toEqual([
         { id: 'person-2', success: true },
@@ -242,7 +272,7 @@ describe(PersonService.name, () => {
 
       expect(jobMock.queue).toHaveBeenCalledWith({
         name: JobName.SEARCH_REMOVE_FACE,
-        data: { assetId: assetEntityStub.image.id, personId: personStub.mergePerson.id },
+        data: { assetId: assetStub.image.id, personId: personStub.mergePerson.id },
       });
     });
 
@@ -272,7 +302,7 @@ describe(PersonService.name, () => {
     it('should handle an error reassigning faces', async () => {
       personMock.getById.mockResolvedValue(personStub.primaryPerson);
       personMock.getById.mockResolvedValue(personStub.mergePerson);
-      personMock.prepareReassignFaces.mockResolvedValue([assetEntityStub.image.id]);
+      personMock.prepareReassignFaces.mockResolvedValue([assetStub.image.id]);
       personMock.reassignFaces.mockRejectedValue(new Error('update failed'));
 
       await expect(sut.mergePerson(authStub.admin, 'person-1', { ids: ['person-2'] })).resolves.toEqual([

@@ -16,9 +16,9 @@ void main() {
   // final instance = PersonUpdateDto();
 
   group('test PersonUpdateDto', () {
-    // Person name.
-    // String name
-    test('to test the property `name`', () async {
+    // Person date of birth.
+    // DateTime birthDate
+    test('to test the property `birthDate`', () async {
       // TODO
     });
 
@@ -31,6 +31,12 @@ void main() {
     // Person visibility
     // bool isHidden
     test('to test the property `isHidden`', () async {
+      // TODO
+    });
+
+    // Person name.
+    // String name
+    test('to test the property `name`', () async {
       // TODO
     });
 

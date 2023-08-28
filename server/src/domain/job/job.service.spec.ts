@@ -1,7 +1,7 @@
 import { SystemConfig } from '@app/infra/entities';
 import { BadRequestException } from '@nestjs/common';
 import {
-  assetEntityStub,
+  assetStub,
   asyncTick,
   newAssetRepositoryMock,
   newCommunicationRepositoryMock,
@@ -51,6 +51,7 @@ describe(JobService.name, () => {
         [{ name: JobName.USER_DELETE_CHECK }],
         [{ name: JobName.PERSON_CLEANUP }],
         [{ name: JobName.QUEUE_GENERATE_THUMBNAILS, data: { force: false } }],
+        [{ name: JobName.CLEAN_OLD_AUDIT_LOGS }],
       ]);
     });
   });
@@ -252,6 +253,10 @@ describe(JobService.name, () => {
       },
       {
         item: { name: JobName.METADATA_EXTRACTION, data: { id: 'asset-1' } },
+        jobs: [JobName.LINK_LIVE_PHOTOS],
+      },
+      {
+        item: { name: JobName.LINK_LIVE_PHOTOS, data: { id: 'asset-1' } },
         jobs: [JobName.STORAGE_TEMPLATE_MIGRATION_SINGLE, JobName.SEARCH_INDEX_ASSET],
       },
       {
@@ -300,7 +305,7 @@ describe(JobService.name, () => {
     for (const { item, jobs } of tests) {
       it(`should queue ${jobs.length} jobs when a ${item.name} job finishes successfully`, async () => {
         if (item.name === JobName.GENERATE_JPEG_THUMBNAIL && item.data.source === 'upload') {
-          assetMock.getByIds.mockResolvedValue([assetEntityStub.livePhotoMotionAsset]);
+          assetMock.getByIds.mockResolvedValue([assetStub.livePhotoMotionAsset]);
         } else {
           assetMock.getByIds.mockResolvedValue([]);
         }

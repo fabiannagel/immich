@@ -16,8 +16,18 @@ void main() {
   // final instance = PersonResponseDto();
 
   group('test PersonResponseDto', () {
+    // DateTime birthDate
+    test('to test the property `birthDate`', () async {
+      // TODO
+    });
+
     // String id
     test('to test the property `id`', () async {
+      // TODO
+    });
+
+    // bool isHidden
+    test('to test the property `isHidden`', () async {
       // TODO
     });
 
@@ -28,11 +38,6 @@ void main() {
 
     // String thumbnailPath
     test('to test the property `thumbnailPath`', () async {
-      // TODO
-    });
-
-    // bool isHidden
-    test('to test the property `isHidden`', () async {
       // TODO
     });
 

@@ -23,6 +23,8 @@ export enum SystemConfigKey {
   FFMPEG_MAX_BITRATE = 'ffmpeg.maxBitrate',
   FFMPEG_TWO_PASS = 'ffmpeg.twoPass',
   FFMPEG_TRANSCODE = 'ffmpeg.transcode',
+  FFMPEG_ACCEL = 'ffmpeg.accel',
+  FFMPEG_TONEMAP = 'ffmpeg.tonemap',
 
   JOB_THUMBNAIL_GENERATION_CONCURRENCY = 'job.thumbnailGeneration.concurrency',
   JOB_METADATA_EXTRACTION_CONCURRENCY = 'job.metadataExtraction.concurrency',
@@ -34,6 +36,12 @@ export enum SystemConfigKey {
   JOB_STORAGE_TEMPLATE_MIGRATION_CONCURRENCY = 'job.storageTemplateMigration.concurrency',
   JOB_SEARCH_CONCURRENCY = 'job.search.concurrency',
   JOB_SIDECAR_CONCURRENCY = 'job.sidecar.concurrency',
+
+  MACHINE_LEARNING_ENABLED = 'machineLearning.enabled',
+  MACHINE_LEARNING_URL = 'machineLearning.url',
+  MACHINE_LEARNING_FACIAL_RECOGNITION_ENABLED = 'machineLearning.facialRecognitionEnabled',
+  MACHINE_LEARNING_TAG_IMAGE_ENABLED = 'machineLearning.tagImageEnabled',
+  MACHINE_LEARNING_CLIP_ENCODE_ENABLED = 'machineLearning.clipEncodeEnabled',
 
   OAUTH_ENABLED = 'oauth.enabled',
   OAUTH_ISSUER_URL = 'oauth.issuerUrl',
@@ -50,6 +58,9 @@ export enum SystemConfigKey {
   PASSWORD_LOGIN_ENABLED = 'passwordLogin.enabled',
 
   STORAGE_TEMPLATE = 'storageTemplate.template',
+
+  THUMBNAIL_WEBP_SIZE = 'thumbnail.webpSize',
+  THUMBNAIL_JPEG_SIZE = 'thumbnail.jpegSize',
 }
 
 export enum TranscodePolicy {
@@ -71,6 +82,20 @@ export enum AudioCodec {
   OPUS = 'opus',
 }
 
+export enum TranscodeHWAccel {
+  NVENC = 'nvenc',
+  QSV = 'qsv',
+  VAAPI = 'vaapi',
+  DISABLED = 'disabled',
+}
+
+export enum ToneMapping {
+  HABLE = 'hable',
+  MOBIUS = 'mobius',
+  REINHARD = 'reinhard',
+  DISABLED = 'disabled',
+}
+
 export interface SystemConfig {
   ffmpeg: {
     crf: number;
@@ -82,8 +107,17 @@ export interface SystemConfig {
     maxBitrate: string;
     twoPass: boolean;
     transcode: TranscodePolicy;
+    accel: TranscodeHWAccel;
+    tonemap: ToneMapping;
   };
   job: Record<QueueName, { concurrency: number }>;
+  machineLearning: {
+    enabled: boolean;
+    url: string;
+    clipEncodeEnabled: boolean;
+    facialRecognitionEnabled: boolean;
+    tagImageEnabled: boolean;
+  };
   oauth: {
     enabled: boolean;
     issuerUrl: string;
@@ -102,5 +136,9 @@ export interface SystemConfig {
   };
   storageTemplate: {
     template: string;
+  };
+  thumbnail: {
+    webpSize: number;
+    jpegSize: number;
   };
 }

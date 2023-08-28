@@ -14,13 +14,19 @@ class SystemConfigDto {
   /// Returns a new [SystemConfigDto] instance.
   SystemConfigDto({
     required this.ffmpeg,
+    required this.job,
+    required this.machineLearning,
     required this.oauth,
     required this.passwordLogin,
     required this.storageTemplate,
-    required this.job,
+    required this.thumbnail,
   });
 
   SystemConfigFFmpegDto ffmpeg;
+
+  SystemConfigJobDto job;
+
+  SystemConfigMachineLearningDto machineLearning;
 
   SystemConfigOAuthDto oauth;
 
@@ -28,35 +34,41 @@ class SystemConfigDto {
 
   SystemConfigStorageTemplateDto storageTemplate;
 
-  SystemConfigJobDto job;
+  SystemConfigThumbnailDto thumbnail;
 
   @override
   bool operator ==(Object other) => identical(this, other) || other is SystemConfigDto &&
      other.ffmpeg == ffmpeg &&
+     other.job == job &&
+     other.machineLearning == machineLearning &&
      other.oauth == oauth &&
      other.passwordLogin == passwordLogin &&
      other.storageTemplate == storageTemplate &&
-     other.job == job;
+     other.thumbnail == thumbnail;
 
   @override
   int get hashCode =>
     // ignore: unnecessary_parenthesis
     (ffmpeg.hashCode) +
+    (job.hashCode) +
+    (machineLearning.hashCode) +
     (oauth.hashCode) +
     (passwordLogin.hashCode) +
     (storageTemplate.hashCode) +
-    (job.hashCode);
+    (thumbnail.hashCode);
 
   @override
-  String toString() => 'SystemConfigDto[ffmpeg=$ffmpeg, oauth=$oauth, passwordLogin=$passwordLogin, storageTemplate=$storageTemplate, job=$job]';
+  String toString() => 'SystemConfigDto[ffmpeg=$ffmpeg, job=$job, machineLearning=$machineLearning, oauth=$oauth, passwordLogin=$passwordLogin, storageTemplate=$storageTemplate, thumbnail=$thumbnail]';
 
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
       json[r'ffmpeg'] = this.ffmpeg;
+      json[r'job'] = this.job;
+      json[r'machineLearning'] = this.machineLearning;
       json[r'oauth'] = this.oauth;
       json[r'passwordLogin'] = this.passwordLogin;
       json[r'storageTemplate'] = this.storageTemplate;
-      json[r'job'] = this.job;
+      json[r'thumbnail'] = this.thumbnail;
     return json;
   }
 
@@ -69,10 +81,12 @@ class SystemConfigDto {
 
       return SystemConfigDto(
         ffmpeg: SystemConfigFFmpegDto.fromJson(json[r'ffmpeg'])!,
+        job: SystemConfigJobDto.fromJson(json[r'job'])!,
+        machineLearning: SystemConfigMachineLearningDto.fromJson(json[r'machineLearning'])!,
         oauth: SystemConfigOAuthDto.fromJson(json[r'oauth'])!,
         passwordLogin: SystemConfigPasswordLoginDto.fromJson(json[r'passwordLogin'])!,
         storageTemplate: SystemConfigStorageTemplateDto.fromJson(json[r'storageTemplate'])!,
-        job: SystemConfigJobDto.fromJson(json[r'job'])!,
+        thumbnail: SystemConfigThumbnailDto.fromJson(json[r'thumbnail'])!,
       );
     }
     return null;
@@ -121,10 +135,12 @@ class SystemConfigDto {
   /// The list of required keys that must be present in a JSON.
   static const requiredKeys = <String>{
     'ffmpeg',
+    'job',
+    'machineLearning',
     'oauth',
     'passwordLogin',
     'storageTemplate',
-    'job',
+    'thumbnail',
   };
 }
 

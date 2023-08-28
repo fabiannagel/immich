@@ -1,22 +1,23 @@
 import { AssetType } from '@app/infra/entities';
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import {
-  assetEntityStub,
+  assetStub,
   authStub,
   IAccessRepositoryMock,
   newAccessRepositoryMock,
   newAssetRepositoryMock,
   newCryptoRepositoryMock,
+  newJobRepositoryMock,
   newStorageRepositoryMock,
 } from '@test';
 import { when } from 'jest-when';
 import { Readable } from 'stream';
 import { ICryptoRepository } from '../crypto';
-import { mimeTypes } from '../domain.constant';
+import { IJobRepository, JobName } from '../job';
 import { IStorageRepository } from '../storage';
 import { AssetStats, IAssetRepository } from './asset.repository';
 import { AssetService, UploadFieldName } from './asset.service';
-import { AssetStatsResponseDto, DownloadResponseDto } from './dto';
+import { AssetJobName, AssetStatsResponseDto, DownloadResponseDto } from './dto';
 import { mapAsset } from './response-dto';
 
 const downloadResponse: DownloadResponseDto = {
@@ -66,30 +67,78 @@ const uploadFile = {
   },
 };
 
+const validImages = [
+  '.3fr',
+  '.ari',
+  '.arw',
+  '.avif',
+  '.cap',
+  '.cin',
+  '.cr2',
+  '.cr3',
+  '.crw',
+  '.dcr',
+  '.dng',
+  '.erf',
+  '.fff',
+  '.gif',
+  '.heic',
+  '.heif',
+  '.iiq',
+  '.jpeg',
+  '.jpg',
+  '.jxl',
+  '.k25',
+  '.kdc',
+  '.mrw',
+  '.nef',
+  '.orf',
+  '.ori',
+  '.pef',
+  '.png',
+  '.raf',
+  '.raw',
+  '.rwl',
+  '.sr2',
+  '.srf',
+  '.srw',
+  '.tiff',
+  '.webp',
+  '.x3f',
+];
+
+const validVideos = ['.3gp', '.avi', '.flv', '.m2ts', '.mkv', '.mov', '.mp4', '.mpg', '.mts', '.webm', '.wmv'];
+
 const uploadTests = [
   {
-    label: 'asset',
+    label: 'asset images',
     fieldName: UploadFieldName.ASSET_DATA,
-    filetypes: Object.keys({ ...mimeTypes.image, ...mimeTypes.video }),
-    invalid: ['.xml', '.html'],
+    valid: validImages,
+    invalid: ['.html', '.xml'],
+  },
+  {
+    label: 'asset videos',
+    fieldName: UploadFieldName.ASSET_DATA,
+    valid: validVideos,
+    invalid: ['.html', '.xml'],
   },
   {
     label: 'live photo',
     fieldName: UploadFieldName.LIVE_PHOTO_DATA,
-    filetypes: Object.keys(mimeTypes.video),
-    invalid: ['.xml', '.html', '.jpg', '.jpeg'],
+    valid: validVideos,
+    invalid: ['.html', '.jpeg', '.jpg', '.xml'],
   },
   {
     label: 'sidecar',
     fieldName: UploadFieldName.SIDECAR_DATA,
-    filetypes: Object.keys(mimeTypes.sidecar),
-    invalid: ['.xml', '.html', '.jpg', '.jpeg', '.mov', '.mp4'],
+    valid: ['.xmp'],
+    invalid: ['.html', '.jpeg', '.jpg', '.mov', '.mp4', '.xml'],
   },
   {
     label: 'profile',
     fieldName: UploadFieldName.PROFILE_DATA,
-    filetypes: Object.keys(mimeTypes.profile),
-    invalid: ['.xml', '.html', '.cr2', '.arf', '.mov', '.mp4'],
+    valid: ['.avif', '.dng', '.heic', '.heif', '.jpeg', '.jpg', '.png', '.webp'],
+    invalid: ['.arf', '.cr2', '.html', '.mov', '.mp4', '.xml'],
   },
 ];
 
@@ -98,6 +147,7 @@ describe(AssetService.name, () => {
   let accessMock: IAccessRepositoryMock;
   let assetMock: jest.Mocked<IAssetRepository>;
   let cryptoMock: jest.Mocked<ICryptoRepository>;
+  let jobMock: jest.Mocked<IJobRepository>;
   let storageMock: jest.Mocked<IStorageRepository>;
 
   it('should work', () => {
@@ -108,8 +158,9 @@ describe(AssetService.name, () => {
     accessMock = newAccessRepositoryMock();
     assetMock = newAssetRepositoryMock();
     cryptoMock = newCryptoRepositoryMock();
+    jobMock = newJobRepositoryMock();
     storageMock = newStorageRepositoryMock();
-    sut = new AssetService(accessMock, assetMock, cryptoMock, storageMock);
+    sut = new AssetService(accessMock, assetMock, cryptoMock, jobMock, storageMock);
   });
 
   describe('canUpload', () => {
@@ -117,9 +168,9 @@ describe(AssetService.name, () => {
       expect(() => sut.canUploadFile(uploadFile.nullAuth)).toThrowError(UnauthorizedException);
     });
 
-    for (const { fieldName, filetypes, invalid } of uploadTests) {
-      describe(`${fieldName}`, () => {
-        for (const filetype of filetypes) {
+    for (const { fieldName, valid, invalid } of uploadTests) {
+      describe(fieldName, () => {
+        for (const filetype of valid) {
           it(`should accept ${filetype}`, () => {
             expect(sut.canUploadFile(uploadFile.filename(fieldName, `asset${filetype}`))).toEqual(true);
           });
@@ -132,6 +183,16 @@ describe(AssetService.name, () => {
             );
           });
         }
+
+        it('should be sorted (valid)', () => {
+          // TODO: use toSorted in NodeJS 20.
+          expect(valid).toEqual([...valid].sort());
+        });
+
+        it('should be sorted (invalid)', () => {
+          // TODO: use toSorted in NodeJS 20.
+          expect(invalid).toEqual([...invalid].sort());
+        });
       });
     }
   });
@@ -189,7 +250,7 @@ describe(AssetService.name, () => {
   describe('getMapMarkers', () => {
     it('should get geo information of assets', async () => {
       assetMock.getMapMarkers.mockResolvedValue(
-        [assetEntityStub.withLocation].map((asset) => ({
+        [assetStub.withLocation].map((asset) => ({
           id: asset.id,
 
           /* eslint-disable-next-line @typescript-eslint/no-non-null-assertion */
@@ -204,7 +265,7 @@ describe(AssetService.name, () => {
 
       expect(markers).toHaveLength(1);
       expect(markers[0]).toEqual({
-        id: assetEntityStub.withLocation.id,
+        id: assetStub.withLocation.id,
         lat: 100,
         lon: 100,
       });
@@ -251,14 +312,14 @@ describe(AssetService.name, () => {
     it('should set the title correctly', async () => {
       when(assetMock.getByDate)
         .calledWith(authStub.admin.id, new Date('2022-06-15T00:00:00.000Z'))
-        .mockResolvedValue([assetEntityStub.image]);
+        .mockResolvedValue([assetStub.image]);
       when(assetMock.getByDate)
         .calledWith(authStub.admin.id, new Date('2021-06-15T00:00:00.000Z'))
-        .mockResolvedValue([assetEntityStub.video]);
+        .mockResolvedValue([assetStub.video]);
 
       await expect(sut.getMemoryLane(authStub.admin, { timestamp: new Date(2023, 5, 15), years: 2 })).resolves.toEqual([
-        { title: '1 year since...', assets: [mapAsset(assetEntityStub.image)] },
-        { title: '2 years since...', assets: [mapAsset(assetEntityStub.video)] },
+        { title: '1 year since...', assets: [mapAsset(assetStub.image)] },
+        { title: '2 years since...', assets: [mapAsset(assetStub.video)] },
       ]);
 
       expect(assetMock.getByDate).toHaveBeenCalledTimes(2);
@@ -295,12 +356,12 @@ describe(AssetService.name, () => {
       const stream = new Readable();
 
       accessMock.asset.hasOwnerAccess.mockResolvedValue(true);
-      assetMock.getByIds.mockResolvedValue([assetEntityStub.image]);
+      assetMock.getByIds.mockResolvedValue([assetStub.image]);
       storageMock.createReadStream.mockResolvedValue({ stream });
 
       await expect(sut.downloadFile(authStub.admin, 'asset-1')).resolves.toEqual({ stream });
 
-      expect(storageMock.createReadStream).toHaveBeenCalledWith(assetEntityStub.image.originalPath, 'image/jpeg');
+      expect(storageMock.createReadStream).toHaveBeenCalledWith(assetStub.image.originalPath, 'image/jpeg');
     });
 
     it('should download an archive', async () => {
@@ -311,7 +372,7 @@ describe(AssetService.name, () => {
       };
 
       accessMock.asset.hasOwnerAccess.mockResolvedValue(true);
-      assetMock.getByIds.mockResolvedValue([assetEntityStub.noResizePath, assetEntityStub.noWebpPath]);
+      assetMock.getByIds.mockResolvedValue([assetStub.noResizePath, assetStub.noWebpPath]);
       storageMock.createZipStream.mockReturnValue(archiveMock);
 
       await expect(sut.downloadArchive(authStub.admin, { assetIds: ['asset-1', 'asset-2'] })).resolves.toEqual({
@@ -331,7 +392,7 @@ describe(AssetService.name, () => {
       };
 
       accessMock.asset.hasOwnerAccess.mockResolvedValue(true);
-      assetMock.getByIds.mockResolvedValue([assetEntityStub.noResizePath, assetEntityStub.noResizePath]);
+      assetMock.getByIds.mockResolvedValue([assetStub.noResizePath, assetStub.noResizePath]);
       storageMock.createZipStream.mockReturnValue(archiveMock);
 
       await expect(sut.downloadArchive(authStub.admin, { assetIds: ['asset-1', 'asset-2'] })).resolves.toEqual({
@@ -351,7 +412,7 @@ describe(AssetService.name, () => {
 
     it('should return a list of archives (assetIds)', async () => {
       accessMock.asset.hasOwnerAccess.mockResolvedValue(true);
-      assetMock.getByIds.mockResolvedValue([assetEntityStub.image, assetEntityStub.video]);
+      assetMock.getByIds.mockResolvedValue([assetStub.image, assetStub.video]);
 
       const assetIds = ['asset-1', 'asset-2'];
       await expect(sut.getDownloadInfo(authStub.admin, { assetIds })).resolves.toEqual(downloadResponse);
@@ -362,7 +423,7 @@ describe(AssetService.name, () => {
     it('should return a list of archives (albumId)', async () => {
       accessMock.album.hasOwnerAccess.mockResolvedValue(true);
       assetMock.getByAlbumId.mockResolvedValue({
-        items: [assetEntityStub.image, assetEntityStub.video],
+        items: [assetStub.image, assetStub.video],
         hasNextPage: false,
       });
 
@@ -374,7 +435,7 @@ describe(AssetService.name, () => {
 
     it('should return a list of archives (userId)', async () => {
       assetMock.getByUserId.mockResolvedValue({
-        items: [assetEntityStub.image, assetEntityStub.video],
+        items: [assetStub.image, assetStub.video],
         hasNextPage: false,
       });
 
@@ -388,10 +449,10 @@ describe(AssetService.name, () => {
     it('should split archives by size', async () => {
       assetMock.getByUserId.mockResolvedValue({
         items: [
-          { ...assetEntityStub.image, id: 'asset-1' },
-          { ...assetEntityStub.video, id: 'asset-2' },
-          { ...assetEntityStub.withLocation, id: 'asset-3' },
-          { ...assetEntityStub.noWebpPath, id: 'asset-4' },
+          { ...assetStub.image, id: 'asset-1' },
+          { ...assetStub.video, id: 'asset-2' },
+          { ...assetStub.withLocation, id: 'asset-3' },
+          { ...assetStub.noWebpPath, id: 'asset-4' },
         ],
         hasNextPage: false,
       });
@@ -413,18 +474,18 @@ describe(AssetService.name, () => {
     it('should include the video portion of a live photo', async () => {
       accessMock.asset.hasOwnerAccess.mockResolvedValue(true);
       when(assetMock.getByIds)
-        .calledWith([assetEntityStub.livePhotoStillAsset.id])
-        .mockResolvedValue([assetEntityStub.livePhotoStillAsset]);
+        .calledWith([assetStub.livePhotoStillAsset.id])
+        .mockResolvedValue([assetStub.livePhotoStillAsset]);
       when(assetMock.getByIds)
-        .calledWith([assetEntityStub.livePhotoMotionAsset.id])
-        .mockResolvedValue([assetEntityStub.livePhotoMotionAsset]);
+        .calledWith([assetStub.livePhotoMotionAsset.id])
+        .mockResolvedValue([assetStub.livePhotoMotionAsset]);
 
-      const assetIds = [assetEntityStub.livePhotoStillAsset.id];
+      const assetIds = [assetStub.livePhotoStillAsset.id];
       await expect(sut.getDownloadInfo(authStub.admin, { assetIds })).resolves.toEqual({
         totalSize: 125_000,
         archives: [
           {
-            assetIds: [assetEntityStub.livePhotoStillAsset.id, assetEntityStub.livePhotoMotionAsset.id],
+            assetIds: [assetStub.livePhotoStillAsset.id, assetStub.livePhotoMotionAsset.id],
             size: 125_000,
           },
         ],
@@ -455,6 +516,44 @@ describe(AssetService.name, () => {
       assetMock.getStatistics.mockResolvedValue(stats);
       await expect(sut.getStatistics(authStub.admin, {})).resolves.toEqual(statResponse);
       expect(assetMock.getStatistics).toHaveBeenCalledWith(authStub.admin.id, {});
+    });
+  });
+
+  describe('updateAll', () => {
+    it('should require asset write access for all ids', async () => {
+      accessMock.asset.hasOwnerAccess.mockResolvedValue(false);
+      await expect(
+        sut.updateAll(authStub.admin, {
+          ids: ['asset-1'],
+          isArchived: false,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('should update all assets', async () => {
+      accessMock.asset.hasOwnerAccess.mockResolvedValue(true);
+      await sut.updateAll(authStub.admin, { ids: ['asset-1', 'asset-2'], isArchived: true });
+      expect(assetMock.updateAll).toHaveBeenCalledWith(['asset-1', 'asset-2'], { isArchived: true });
+    });
+  });
+
+  describe('run', () => {
+    it('should run the refresh metadata job', async () => {
+      accessMock.asset.hasOwnerAccess.mockResolvedValue(true);
+      await sut.run(authStub.admin, { assetIds: ['asset-1'], name: AssetJobName.REFRESH_METADATA }),
+        expect(jobMock.queue).toHaveBeenCalledWith({ name: JobName.METADATA_EXTRACTION, data: { id: 'asset-1' } });
+    });
+
+    it('should run the refresh thumbnails job', async () => {
+      accessMock.asset.hasOwnerAccess.mockResolvedValue(true);
+      await sut.run(authStub.admin, { assetIds: ['asset-1'], name: AssetJobName.REGENERATE_THUMBNAIL }),
+        expect(jobMock.queue).toHaveBeenCalledWith({ name: JobName.GENERATE_JPEG_THUMBNAIL, data: { id: 'asset-1' } });
+    });
+
+    it('should run the transcode video', async () => {
+      accessMock.asset.hasOwnerAccess.mockResolvedValue(true);
+      await sut.run(authStub.admin, { assetIds: ['asset-1'], name: AssetJobName.TRANSCODE_VIDEO }),
+        expect(jobMock.queue).toHaveBeenCalledWith({ name: JobName.VIDEO_CONVERSION, data: { id: 'asset-1' } });
     });
   });
 });

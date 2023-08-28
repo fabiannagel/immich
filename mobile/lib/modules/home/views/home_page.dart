@@ -8,8 +8,10 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/modules/album/providers/album.provider.dart';
+import 'package:immich_mobile/modules/album/providers/album_detail.provider.dart';
 import 'package:immich_mobile/modules/album/providers/shared_album.provider.dart';
 import 'package:immich_mobile/modules/album/services/album.service.dart';
+import 'package:immich_mobile/modules/backup/providers/manual_upload.provider.dart';
 import 'package:immich_mobile/modules/home/providers/multiselect.provider.dart';
 import 'package:immich_mobile/modules/home/ui/asset_grid/immich_asset_grid.dart';
 import 'package:immich_mobile/modules/home/ui/control_bottom_app_bar.dart';
@@ -23,10 +25,9 @@ import 'package:immich_mobile/shared/providers/asset.provider.dart';
 import 'package:immich_mobile/shared/providers/server_info.provider.dart';
 import 'package:immich_mobile/shared/providers/user.provider.dart';
 import 'package:immich_mobile/shared/providers/websocket.provider.dart';
-import 'package:immich_mobile/shared/services/share.service.dart';
 import 'package:immich_mobile/shared/ui/immich_loading_indicator.dart';
 import 'package:immich_mobile/shared/ui/immich_toast.dart';
-import 'package:immich_mobile/shared/ui/share_dialog.dart';
+import 'package:immich_mobile/utils/selection_handlers.dart';
 
 class HomePage extends HookConsumerWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -35,6 +36,7 @@ class HomePage extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final multiselectEnabled = ref.watch(multiselectProvider.notifier);
     final selectionEnabledHook = useState(false);
+    final selectionAssetState = useState(AssetState.remote);
 
     final selection = useState(<Asset>{});
     final albums = ref.watch(albumProvider).where((a) => a.isRemote).toList();
@@ -79,20 +81,13 @@ class HomePage extends HookConsumerWidget {
       ) {
         selectionEnabledHook.value = multiselect;
         selection.value = selectedAssets;
+        selectionAssetState.value = selectedAssets.any((e) => e.isRemote)
+            ? AssetState.remote
+            : AssetState.local;
       }
 
       void onShareAssets() {
-        showDialog(
-          context: context,
-          builder: (BuildContext buildContext) {
-            ref
-                .watch(shareServiceProvider)
-                .shareAssets(selection.value.toList())
-                .then((_) => Navigator.of(buildContext).pop());
-            return const ShareDialog();
-          },
-          barrierDismissible: false,
-        );
+        handleShareAssets(ref, context, selection.value.toList());
 
         selectionEnabledHook.value = false;
       }
@@ -120,16 +115,7 @@ class HomePage extends HookConsumerWidget {
             localErrorMessage: 'home_page_favorite_err_local'.tr(),
           );
           if (remoteAssets.isNotEmpty) {
-            await ref
-                .watch(assetProvider.notifier)
-                .toggleFavorite(remoteAssets, true);
-
-            final assetOrAssets = remoteAssets.length > 1 ? 'assets' : 'asset';
-            ImmichToast.show(
-              context: context,
-              msg: 'Added ${remoteAssets.length} $assetOrAssets to favorites',
-              gravity: ToastGravity.BOTTOM,
-            );
+            await handleFavoriteAssets(ref, context, remoteAssets);
           }
         } finally {
           processing.value = false;
@@ -143,18 +129,7 @@ class HomePage extends HookConsumerWidget {
           final remoteAssets = remoteOnlySelection(
             localErrorMessage: 'home_page_archive_err_local'.tr(),
           );
-          if (remoteAssets.isNotEmpty) {
-            await ref
-                .read(assetProvider.notifier)
-                .toggleArchive(remoteAssets, true);
-
-            final assetOrAssets = remoteAssets.length > 1 ? 'assets' : 'asset';
-            ImmichToast.show(
-              context: context,
-              msg: 'Moved ${remoteAssets.length} $assetOrAssets to archive',
-              gravity: ToastGravity.CENTER,
-            );
-          }
+          await handleArchiveAssets(ref, context, remoteAssets);
         } finally {
           processing.value = false;
           selectionEnabledHook.value = false;
@@ -166,6 +141,28 @@ class HomePage extends HookConsumerWidget {
         try {
           await ref.read(assetProvider.notifier).deleteAssets(selection.value);
           selectionEnabledHook.value = false;
+        } finally {
+          processing.value = false;
+        }
+      }
+
+      void onUpload() async {
+        processing.value = true;
+        try {
+          final Set<Asset> assets = selection.value;
+          if (assets.length > 30) {
+            ImmichToast.show(
+              context: context,
+              msg: 'home_page_upload_err_limit'.tr(),
+              gravity: ToastGravity.BOTTOM,
+            );
+          } else {
+            processing.value = false;
+            selectionEnabledHook.value = false;
+            await ref
+                .read(manualUploadProvider.notifier)
+                .uploadAssets(context, assets);
+          }
         } finally {
           processing.value = false;
         }
@@ -193,7 +190,7 @@ class HomePage extends HookConsumerWidget {
                   namedArgs: {
                     "album": album.name,
                     "added": result.successfullyAdded.toString(),
-                    "failed": result.alreadyInAlbum.length.toString()
+                    "failed": result.alreadyInAlbum.length.toString(),
                   },
                 ),
               );
@@ -208,6 +205,9 @@ class HomePage extends HookConsumerWidget {
                 ),
                 toastType: ToastType.success,
               );
+
+              ref.watch(albumProvider.notifier).getAllAlbums();
+              ref.invalidate(albumDetailProvider(album.id));
             }
           }
         } finally {
@@ -249,7 +249,7 @@ class HomePage extends HookConsumerWidget {
         } else {
           refreshCount.value++;
           // set counter back to 0 if user does not request refresh again
-          Timer(const Duration(seconds: 2), () {
+          Timer(const Duration(seconds: 4), () {
             refreshCount.value = 0;
           });
         }
@@ -292,7 +292,7 @@ class HomePage extends HookConsumerWidget {
                     ).tr(),
                   ),
                 ),
-              )
+              ),
             ],
           ),
         );
@@ -311,7 +311,11 @@ class HomePage extends HookConsumerWidget {
                           listener: selectionListener,
                           selectionActive: selectionEnabledHook.value,
                           onRefresh: refreshAssets,
-                          topWidget: const MemoryLane(),
+                          topWidget: (currentUser != null &&
+                                  currentUser.memoryEnabled != null &&
+                                  currentUser.memoryEnabled!)
+                              ? const MemoryLane()
+                              : const SizedBox(),
                         ),
                   error: (error, _) => Center(child: Text(error.toString())),
                   loading: buildLoadingIndicator,
@@ -326,9 +330,11 @@ class HomePage extends HookConsumerWidget {
                 albums: albums,
                 sharedAlbums: sharedAlbums,
                 onCreateNewAlbum: onCreateNewAlbum,
+                onUpload: onUpload,
                 enabled: !processing.value,
+                selectionAssetState: selectionAssetState.value,
               ),
-            if (processing.value) const Center(child: ImmichLoadingIndicator())
+            if (processing.value) const Center(child: ImmichLoadingIndicator()),
           ],
         ),
       );

@@ -14,17 +14,23 @@
   export let shadow = false;
   export let circle = false;
   export let hidden = false;
+  export let border = false;
   let complete = false;
+
+  export let eyeColor = 'white';
 </script>
 
 <img
   style:width={widthStyle}
   style:height={heightStyle}
-  style:filter={hidden ? 'grayscale(75%)' : 'none'}
+  style:filter={hidden ? 'grayscale(50%)' : 'none'}
+  style:opacity={hidden ? '0.5' : '1'}
   src={url}
   alt={altText}
-  class="object-cover transition duration-300"
-  class:rounded-lg={curve}
+  class="object-cover transition duration-300 {border
+    ? 'border-[3px] border-immich-dark-primary/80 hover:border-immich-primary'
+    : ''}"
+  class:rounded-xl={curve}
   class:shadow-lg={shadow}
   class:rounded-full={circle}
   class:opacity-0={!thumbhash && !complete}
@@ -32,9 +38,10 @@
   use:imageLoad
   on:image-load|once={() => (complete = true)}
 />
+
 {#if hidden}
   <div class="absolute left-1/2 top-1/2 translate-x-[-50%] translate-y-[-50%] transform">
-    <EyeOffOutline size="2em" />
+    <EyeOffOutline size="2em" color={eyeColor} />
   </div>
 {/if}
 
@@ -45,7 +52,7 @@
     src={thumbHashToDataURL(Buffer.from(thumbhash, 'base64'))}
     alt={altText}
     class="absolute top-0 object-cover"
-    class:rounded-lg={curve}
+    class:rounded-xl={curve}
     class:shadow-lg={shadow}
     class:rounded-full={circle}
     draggable="false"

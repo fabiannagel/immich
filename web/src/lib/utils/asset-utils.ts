@@ -1,26 +1,26 @@
 import { notificationController, NotificationType } from '$lib/components/shared-components/notification/notification';
 import { downloadManager } from '$lib/stores/download';
-import { AddAssetsResponseDto, api, AssetApiGetDownloadInfoRequest, AssetResponseDto, DownloadResponseDto } from '@api';
+import { api, BulkIdResponseDto, AssetResponseDto, DownloadResponseDto, DownloadInfoDto } from '@api';
 import { handleError } from './handle-error';
 
-export const addAssetsToAlbum = async (
-  albumId: string,
-  assetIds: Array<string>,
-  key: string | undefined = undefined,
-): Promise<AddAssetsResponseDto> =>
-  api.albumApi.addAssetsToAlbum({ id: albumId, addAssetsDto: { assetIds }, key }).then(({ data: dto }) => {
-    if (dto.successfullyAdded > 0) {
-      // This might be 0 if the user tries to add an asset that is already in the album
+export const addAssetsToAlbum = async (albumId: string, assetIds: Array<string>): Promise<BulkIdResponseDto[]> =>
+  api.albumApi
+    .addAssetsToAlbum({
+      id: albumId,
+      bulkIdsDto: { ids: assetIds },
+      key: api.getKey(),
+    })
+    .then(({ data: results }) => {
+      const count = results.filter(({ success }) => success).length;
       notificationController.show({
-        message: `Added ${dto.successfullyAdded} to ${dto.album?.albumName}`,
         type: NotificationType.Info,
+        message: `Added ${count} asset${count === 1 ? '' : 's'}`,
       });
-    }
 
-    return dto;
-  });
+      return results;
+    });
 
-const downloadBlob = (data: Blob, filename: string) => {
+export const downloadBlob = (data: Blob, filename: string) => {
   const url = URL.createObjectURL(data);
 
   const anchor = document.createElement('a');
@@ -34,15 +34,11 @@ const downloadBlob = (data: Blob, filename: string) => {
   URL.revokeObjectURL(url);
 };
 
-export const downloadArchive = async (
-  fileName: string,
-  options: Omit<AssetApiGetDownloadInfoRequest, 'key'>,
-  key?: string,
-) => {
+export const downloadArchive = async (fileName: string, options: DownloadInfoDto) => {
   let downloadInfo: DownloadResponseDto | null = null;
 
   try {
-    const { data } = await api.assetApi.getDownloadInfo({ ...options, key });
+    const { data } = await api.assetApi.getDownloadInfo({ downloadInfoDto: options, key: api.getKey() });
     downloadInfo = data;
   } catch (error) {
     handleError(error, 'Unable to download files');
@@ -67,7 +63,7 @@ export const downloadArchive = async (
 
     try {
       const { data } = await api.assetApi.downloadArchive(
-        { assetIdsDto: { assetIds: archive.assetIds }, key },
+        { assetIdsDto: { assetIds: archive.assetIds }, key: api.getKey() },
         {
           responseType: 'blob',
           signal: abort.signal,
@@ -86,7 +82,7 @@ export const downloadArchive = async (
   }
 };
 
-export const downloadFile = async (asset: AssetResponseDto, key?: string) => {
+export const downloadFile = async (asset: AssetResponseDto) => {
   const assets = [
     {
       filename: `${asset.originalFileName}.${getFilenameExtension(asset.originalPath)}`,
@@ -110,7 +106,7 @@ export const downloadFile = async (asset: AssetResponseDto, key?: string) => {
       downloadManager.add(downloadKey, size, abort);
 
       const { data } = await api.assetApi.downloadFile(
-        { id, key },
+        { id, key: api.getKey() },
         {
           responseType: 'blob',
           onDownloadProgress: (event: ProgressEvent) => {
